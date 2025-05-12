@@ -76,79 +76,80 @@ result_df[proj_cols[0]] = projection[:, 0]
 result_df[proj_cols[1]] = projection[:, 1]
 
 # --------------------------
-# Interactive Visualizations
+# Create Visualizations
 # --------------------------
-# Cluster projection plot
-cluster_fig = px.scatter(
-    result_df,
-    x=proj_cols[0],
-    y=proj_cols[1],
-    color='Cluster_str',
-    hover_data=df.columns.tolist(),
-    title=f"Cluster Visualization {shift_info}<br><sub>{proj_cols[0]}-{proj_cols[1]}</sub>",
-    color_discrete_sequence=px.colors.qualitative.Dark24,
-    labels={'Cluster_str': 'Cluster'}
-)
-
-cluster_fig.update_layout(
-    dragmode='pan',
-    hovermode='closest',
-    plot_bgcolor='rgba(240,240,240,0.9)',
-    height=800
-)
-
-# Coadded spectra plot
-def create_coadded_plot():
-    plot_df = result_df[result_df['Cluster'] >= 0].copy()
-    if plot_df.empty:
-        print("No clusters found for coadded spectra")
-        return go.Figure()
-
-    cluster_means = plot_df.groupby('Cluster')[feature_names].mean()
-    cluster_means = cluster_means.apply(
-        lambda x: (x - x.min()) / (x.max() - x.min()) if x.max() != x.min() else x,
-        axis=1
+def create_visualizations():
+    # Cluster projection plot
+    cluster_fig = px.scatter(
+        result_df,
+        x=proj_cols[0],
+        y=proj_cols[1],
+        color='Cluster_str',
+        hover_data=df.columns.tolist(),
+        title=f"Cluster Visualization {shift_info}<br><sub>{proj_cols[0]}-{proj_cols[1]}</sub>",
+        color_discrete_sequence=px.colors.qualitative.Dark24,
+        labels={'Cluster_str': 'Cluster'}
+    )
+    cluster_fig.update_layout(
+        dragmode='pan',
+        hovermode='closest',
+        plot_bgcolor='rgba(240,240,240,0.9)',
+        height=800,
+        width=1200
     )
 
-    fig = go.Figure()
-    for cluster_id in cluster_means.index:
-        fig.add_trace(go.Scatter(
-            x=feature_names,
-            y=cluster_means.loc[cluster_id],
-            mode='lines',
-            name=f'Cluster {cluster_id}',
-            opacity=0.7,
-            hovertemplate='Frequency: %{x}<br>Power: %{y:.2f}'
-        ))
+    # Coadded spectra plot
+    coadd_fig = go.Figure()
+    plot_df = result_df[result_df['Cluster'] >= 0]
 
-    fig.update_layout(
+    if not plot_df.empty:
+        cluster_means = plot_df.groupby('Cluster')[feature_names].mean()
+        cluster_means = cluster_means.apply(
+            lambda x: (x - x.min()) / (x.max() - x.min()) if x.max() != x.min() else x,
+            axis=1
+        )
+
+        for cluster_id in cluster_means.index:
+            coadd_fig.add_trace(go.Scatter(
+                x=feature_names,
+                y=cluster_means.loc[cluster_id],
+                mode='lines',
+                name=f'Cluster {cluster_id}',
+                opacity=0.7
+            ))
+
+    coadd_fig.update_layout(
         title="Normalized Coadded Spectra by Cluster",
         xaxis_title="Frequency Index",
         yaxis_title="Normalized Power",
         height=600,
-        width=1000,
+        width=1200,
         showlegend=True
     )
-    return fig
 
-coadd_fig = create_coadded_plot()
+    return cluster_fig, coadd_fig
+
+# Generate figures
+cluster_fig, coadd_fig = create_visualizations()
 
 # --------------------------
-# Save Results
+# Save All Outputs
 # --------------------------
-output_csv = csv_file.replace('.csv', '_clustered.csv')
-result_df.to_csv(output_csv, index=False)
+base_name = csv_file.rsplit('.', 1)[0]
 
-cluster_html = csv_file.replace('.csv', '_cluster_vis.html')
-cluster_fig.write_html(cluster_html)
-cluster_fig.write_image(cluster_html.replace('.html', '.png'))
+# Save data
+data_output = f"{base_name}_clustered.csv"
+result_df.to_csv(data_output, index=False)
 
-coadd_html = csv_file.replace('.csv', '_coadded_spectra.html')
-coadd_fig.write_html(coadd_html)
-coadd_fig.write_image(coadd_html.replace('.html', '.png'))
+# Save images
+cluster_image = f"{base_name}_cluster_vis.png"
+coadd_image = f"{base_name}_coadded_spectra.png"
+
+cluster_fig.write_image(cluster_image, engine="kaleido")
+coadd_fig.write_image(coadd_image, engine="kaleido")
 
 print(f"\nResults saved to:")
-print(f"- Clustered data: {output_csv}")
-print(f"- Cluster visualization: {cluster_html}")
-print(f"- Coadded spectra: {coadd_html}")
-print("\nOpen HTML files in browser to interact with visualizations!")
+print(f"- Clustered data: {data_output}")
+print(f"- Cluster visualization: {cluster_image}")
+print(f"- Coadded spectra: {coadd_image}")
+print("\nNote: Requires kaleido package for PNG export")
