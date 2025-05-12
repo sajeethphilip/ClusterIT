@@ -148,8 +148,23 @@ coadd_image = f"{base_name}_coadded_spectra.png"
 cluster_fig.write_image(cluster_image, engine="kaleido")
 coadd_fig.write_image(coadd_image, engine="kaleido")
 
+# --------------------------
+# Print Cluster Statistics
+# --------------------------
+# Get cluster counts, including noise (-1)
+cluster_counts = result_df['Cluster'].value_counts().sort_index()
+
+# Format output message
+count_report = ["\nCluster membership:"]
+for cluster_id, count in cluster_counts.items():
+    if cluster_id == -1:
+        count_report.append(f"- Noise points: {count} rows")
+    else:
+        count_report.append(f"- Cluster {cluster_id}: {count} rows")
+
 print(f"\nResults saved to:")
 print(f"- Clustered data: {data_output}")
 print(f"- Cluster visualization: {cluster_image}")
 print(f"- Coadded spectra: {coadd_image}")
+print('\n'.join(count_report))
 print("\nNote: Requires kaleido package for PNG export")
