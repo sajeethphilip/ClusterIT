@@ -168,3 +168,4 @@ print(f"- Cluster visualization: {cluster_image}")
 print(f"- Coadded spectra: {coadd_image}")
 print('\n'.join(count_report))
 print("\nNote: Requires kaleido package for PNG export")
+
