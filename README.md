@@ -28,4 +28,11 @@ Enter label column (or Enter to skip): label
 | 19        | 0.07133   | 19.75     | 19.37     |
 | 20        | 0.05867   | 2.216     | 9.86      |
 =================================================
+
+
+Optimal parameters found:
+min_cluster_size: 20
+min_samples: 19
+Saved results to powspec3/powspec3_auto_clustered.csv
+
 ```
