@@ -5,10 +5,11 @@ from hdbscan import HDBSCAN
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import plotly.express as px
+import plotly.graph_objects as go
 from sklearn.preprocessing import StandardScaler
 import warnings
 
-warnings.filterwarnings('ignore', category=UserWarning)  # Suppress HDBSCAN warnings
+warnings.filterwarnings('ignore', category=UserWarning)
 
 # --------------------------
 # User Input Section
@@ -45,7 +46,6 @@ clusterer = HDBSCAN(
 )
 cluster_labels = clusterer.fit_predict(scaled_features)
 
-# Shift cluster labels if numeric labels exist
 shift_info = ""
 if label_col and pd.api.types.is_numeric_dtype(df[label_col]):
     max_label = df[label_col].max()
@@ -69,7 +69,6 @@ else:
 
 projection = proj.fit_transform(scaled_features)
 
-# Create result dataframe
 result_df = df.copy()
 result_df['Cluster'] = cluster_labels
 result_df['Cluster_str'] = result_df['Cluster'].astype(str)
@@ -77,9 +76,10 @@ result_df[proj_cols[0]] = projection[:, 0]
 result_df[proj_cols[1]] = projection[:, 1]
 
 # --------------------------
-# Interactive Visualization
+# Interactive Visualizations
 # --------------------------
-fig = px.scatter(
+# Cluster projection plot
+cluster_fig = px.scatter(
     result_df,
     x=proj_cols[0],
     y=proj_cols[1],
@@ -90,12 +90,48 @@ fig = px.scatter(
     labels={'Cluster_str': 'Cluster'}
 )
 
-fig.update_layout(
+cluster_fig.update_layout(
     dragmode='pan',
     hovermode='closest',
     plot_bgcolor='rgba(240,240,240,0.9)',
     height=800
 )
+
+# Coadded spectra plot
+def create_coadded_plot():
+    plot_df = result_df[result_df['Cluster'] >= 0].copy()
+    if plot_df.empty:
+        print("No clusters found for coadded spectra")
+        return go.Figure()
+
+    cluster_means = plot_df.groupby('Cluster')[feature_names].mean()
+    cluster_means = cluster_means.apply(
+        lambda x: (x - x.min()) / (x.max() - x.min()) if x.max() != x.min() else x,
+        axis=1
+    )
+
+    fig = go.Figure()
+    for cluster_id in cluster_means.index:
+        fig.add_trace(go.Scatter(
+            x=feature_names,
+            y=cluster_means.loc[cluster_id],
+            mode='lines',
+            name=f'Cluster {cluster_id}',
+            opacity=0.7,
+            hovertemplate='Frequency: %{x}<br>Power: %{y:.2f}'
+        ))
+
+    fig.update_layout(
+        title="Normalized Coadded Spectra by Cluster",
+        xaxis_title="Frequency Index",
+        yaxis_title="Normalized Power",
+        height=600,
+        width=1000,
+        showlegend=True
+    )
+    return fig
+
+coadd_fig = create_coadded_plot()
 
 # --------------------------
 # Save Results
@@ -103,9 +139,16 @@ fig.update_layout(
 output_csv = csv_file.replace('.csv', '_clustered.csv')
 result_df.to_csv(output_csv, index=False)
 
-html_output = csv_file.replace('.csv', '_interactive.html')
-fig.write_html(html_output)
+cluster_html = csv_file.replace('.csv', '_cluster_vis.html')
+cluster_fig.write_html(cluster_html)
+cluster_fig.write_image(cluster_html.replace('.html', '.png'))
 
-print(f"\nResults saved to:\n- {output_csv}\n- {html_output}")
-print("\nOpen the HTML file in a browser to explore clusters interactively!")
-print("Note: Noise points are shown as '-1' in cluster labels")
+coadd_html = csv_file.replace('.csv', '_coadded_spectra.html')
+coadd_fig.write_html(coadd_html)
+coadd_fig.write_image(coadd_html.replace('.html', '.png'))
+
+print(f"\nResults saved to:")
+print(f"- Clustered data: {output_csv}")
+print(f"- Cluster visualization: {cluster_html}")
+print(f"- Coadded spectra: {coadd_html}")
+print("\nOpen HTML files in browser to interact with visualizations!")
