@@ -1,6 +1,8 @@
 pip install pandas hdbscan umap-learn plotly scikit-learn ipywidgets kaleido
 
 pip install pandas hdbscan scikit-learn bayesian-optimization
+
+pip install pandas hdbscan scikit-learn plotly kaleido
 ```
 (my-python) nsp@ninan-latitudee5570:~/Downloads/ML/DBNN/IDBNN/ClusterIT$ python autoclusterIT.py 
 Enter CSV file path: powspec3/powspec3.csv
