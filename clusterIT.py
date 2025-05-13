@@ -56,6 +56,26 @@ if label_col and pd.api.types.is_numeric_dtype(df[label_col]):
     shift_info = f" (shifted from existing labels, starting at {max_label+1})"
 
 # --------------------------
+# Noise Relabeling Decision
+# --------------------------
+result_df = df.copy()
+result_df['Cluster'] = cluster_labels
+
+noise_mask = result_df['Cluster'] == -1
+n_noise = noise_mask.sum()
+
+if n_noise > 0:
+    print(f"\nFound {n_noise} noise points ({n_noise/len(result_df):.1%} of data)")
+    relabel = input("Treat noise points as a new cluster? (yes/no): ").strip().lower()
+
+    if relabel == 'yes':
+        existing_clusters = result_df['Cluster'].unique()
+        valid_clusters = existing_clusters[existing_clusters >= 0]
+        new_cluster_id = valid_clusters.max() + 1 if valid_clusters.size > 0 else 0
+        result_df.loc[noise_mask, 'Cluster'] = new_cluster_id
+        print(f"Relabeled noise as Cluster {new_cluster_id}")
+
+# --------------------------
 # Dimensionality Reduction
 # --------------------------
 projection_choice = input("Projection method [PCA/t-SNE] (default PCA): ").strip().lower()
@@ -69,9 +89,6 @@ else:
 
 projection = proj.fit_transform(scaled_features)
 
-result_df = df.copy()
-result_df['Cluster'] = cluster_labels
-result_df['Cluster_str'] = result_df['Cluster'].astype(str)
 result_df[proj_cols[0]] = projection[:, 0]
 result_df[proj_cols[1]] = projection[:, 1]
 
@@ -79,6 +96,11 @@ result_df[proj_cols[1]] = projection[:, 1]
 # Create Visualizations
 # --------------------------
 def create_visualizations():
+    # Create cluster labels with proper names
+    result_df['Cluster_str'] = result_df['Cluster'].apply(
+        lambda x: f"Cluster {x}" if x != -1 else "Noise"
+    )
+
     # Cluster projection plot
     cluster_fig = px.scatter(
         result_df,
@@ -98,15 +120,12 @@ def create_visualizations():
         width=1200
     )
 
-    # Coadded spectra plot with noise
+    # Coadded spectra plot
     coadd_fig = go.Figure()
     plot_df = result_df.copy()
 
-    # Separate clusters and noise
-    clusters_df = plot_df[plot_df['Cluster'] >= 0]
-    noise_df = plot_df[plot_df['Cluster'] == -1]
-
     # Process clusters
+    clusters_df = plot_df[plot_df['Cluster'] >= 0]
     if not clusters_df.empty:
         cluster_means = clusters_df.groupby('Cluster')[feature_names].mean()
         cluster_means = cluster_means.apply(
@@ -122,10 +141,12 @@ def create_visualizations():
                 opacity=0.7
             ))
 
-    # Process noise
+    # Process noise (if still exists)
+    noise_df = plot_df[plot_df['Cluster'] == -1]
     if not noise_df.empty:
         noise_mean = noise_df[feature_names].mean()
-        noise_normalized = (noise_mean - noise_mean.min())/(noise_mean.max() - noise_mean.min()) if noise_mean.max() != noise_mean.min() else noise_mean
+        noise_normalized = (noise_mean - noise_mean.min())/(noise_mean.max() - noise_mean.min())
+        if noise_mean.max() != noise_mean.min() else noise_mean
         coadd_fig.add_trace(go.Scatter(
             x=feature_names,
             y=noise_normalized,
@@ -143,7 +164,6 @@ def create_visualizations():
         width=1200,
         showlegend=True
     )
-
     return cluster_fig, coadd_fig
 
 # Generate figures
@@ -165,7 +185,6 @@ coadd_image = f"{base_name}_coadded_spectra.png"
 cluster_fig.write_image(cluster_image, engine="kaleido")
 coadd_fig.write_image(coadd_image, engine="kaleido")
 
-# cluster_analysis.py (updated section)
 # --------------------------
 # Print Cluster Statistics
 # --------------------------
@@ -174,9 +193,9 @@ count_report = ["\nCluster membership:"]
 label_insights = []
 
 for cluster_id, count in cluster_counts.items():
-    count_report.append(f"- Cluster {cluster_id}: {count} rows")
+    display_name = f"Cluster {cluster_id}" if cluster_id != -1 else "Noise"
+    count_report.append(f"- {display_name}: {count} rows")
 
-    # Label distribution analysis
     if label_col and cluster_id != -1:
         cluster_data = result_df[result_df['Cluster'] == cluster_id]
         label_counts = cluster_data[label_col].value_counts()
@@ -185,16 +204,14 @@ for cluster_id, count in cluster_counts.items():
 
         if not top_labels.empty:
             insights = [
-                f"   ⚡ {label}: {count} ({count/total:.1%})"
-                for label, count in top_labels.items()
+                f"   ⚡ {label}: {cnt} ({cnt/total:.1%})"
+                for label, cnt in top_labels.items()
             ]
-            label_insights.append(f"Cluster {cluster_id} composition:\n" + "\n".join(insights))
+            label_insights.append(f"{display_name} composition:\n" + "\n".join(insights))
 
-# Noise analysis
+# Noise analysis (if still exists)
 if -1 in cluster_counts:
     noise_count = cluster_counts[-1]
-    count_report.append(f"- Noise: {noise_count} rows")
-
     if label_col:
         noise_counts = result_df[result_df['Cluster'] == -1][label_col].value_counts()
         total_noise = noise_counts.sum()
@@ -202,8 +219,8 @@ if -1 in cluster_counts:
 
         if not top_noise.empty:
             insights = [
-                f"   🔊 {label}: {count} ({count/total_noise:.1%})"
-                for label, count in top_noise.items()
+                f"   🔊 {label}: {cnt} ({cnt/total_noise:.1%})"
+                for label, cnt in top_noise.items()
             ]
             label_insights.append("Noise composition:\n" + "\n".join(insights))
 
