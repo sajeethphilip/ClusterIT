@@ -8,6 +8,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.preprocessing import StandardScaler
 import warnings
+import matplotlib
+matplotlib.use('Agg')  # Set non-interactive backend
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
@@ -24,6 +26,15 @@ label_col = input("\nEnter name of the label column (or press Enter if none): ")
 if label_col and label_col not in df.columns:
     print(f"Error: Column '{label_col}' not found!")
     exit()
+
+# --------------------------
+# Data Balancing
+# --------------------------
+if label_col:
+    # Get balanced samples per class
+    min_count = df[label_col].value_counts().min()
+    balanced_df = df.groupby(label_col).apply(lambda x: x.sample(min_count))
+    df = balanced_df.reset_index(drop=True)
 
 # --------------------------
 # Data Preparation
@@ -96,7 +107,6 @@ result_df[proj_cols[1]] = projection[:, 1]
 # Create Visualizations
 # --------------------------
 def create_visualizations():
-    # Create cluster labels with proper names
     result_df['Cluster_str'] = result_df['Cluster'].apply(
         lambda x: f"Cluster {x}" if x != -1 else "Noise"
     )
@@ -113,8 +123,6 @@ def create_visualizations():
         labels={'Cluster_str': 'Cluster'}
     )
     cluster_fig.update_layout(
-        dragmode='pan',
-        hovermode='closest',
         plot_bgcolor='rgba(240,240,240,0.9)',
         height=800,
         width=1200
@@ -141,13 +149,14 @@ def create_visualizations():
                 opacity=0.7
             ))
 
-    # Process noise (if still exists)
+    # Process noise
     noise_df = plot_df[plot_df['Cluster'] == -1]
     if not noise_df.empty:
         noise_mean = noise_df[feature_names].mean()
-        noise_normalized = (noise_mean - noise_mean.min())/(noise_mean.max() - noise_mean.min())
-        if noise_mean.max() != noise_mean.min(): noise_mean=noise_normalized
-        else: noise_mean
+        if noise_mean.max() != noise_mean.min():
+            noise_normalized = (noise_mean - noise_mean.min())/(noise_mean.max() - noise_mean.min())
+        else:
+            noise_normalized = noise_mean
         coadd_fig.add_trace(go.Scatter(
             x=feature_names,
             y=noise_normalized,
@@ -162,8 +171,7 @@ def create_visualizations():
         xaxis_title="Frequency Index",
         yaxis_title="Normalized Power",
         height=600,
-        width=1200,
-        showlegend=True
+        width=1200
     )
     return cluster_fig, coadd_fig
 
@@ -210,7 +218,7 @@ for cluster_id, count in cluster_counts.items():
             ]
             label_insights.append(f"{display_name} composition:\n" + "\n".join(insights))
 
-# Noise analysis (if still exists)
+# Noise analysis
 if -1 in cluster_counts:
     noise_count = cluster_counts[-1]
     if label_col:
