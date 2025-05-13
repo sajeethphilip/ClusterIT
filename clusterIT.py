@@ -8,8 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.preprocessing import StandardScaler
 import warnings
-import matplotlib
-matplotlib.use('Agg')  # Set non-interactive backend
+import os
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
@@ -26,15 +25,6 @@ label_col = input("\nEnter name of the label column (or press Enter if none): ")
 if label_col and label_col not in df.columns:
     print(f"Error: Column '{label_col}' not found!")
     exit()
-
-# --------------------------
-# Data Balancing
-# --------------------------
-if label_col:
-    # Get balanced samples per class
-    min_count = df[label_col].value_counts().min()
-    balanced_df = df.groupby(label_col).apply(lambda x: x.sample(min_count))
-    df = balanced_df.reset_index(drop=True)
 
 # --------------------------
 # Data Preparation
@@ -107,6 +97,7 @@ result_df[proj_cols[1]] = projection[:, 1]
 # Create Visualizations
 # --------------------------
 def create_visualizations():
+    # Create cluster labels with proper names
     result_df['Cluster_str'] = result_df['Cluster'].apply(
         lambda x: f"Cluster {x}" if x != -1 else "Noise"
     )
@@ -123,6 +114,8 @@ def create_visualizations():
         labels={'Cluster_str': 'Cluster'}
     )
     cluster_fig.update_layout(
+        dragmode='pan',
+        hovermode='closest',
         plot_bgcolor='rgba(240,240,240,0.9)',
         height=800,
         width=1200
@@ -149,14 +142,12 @@ def create_visualizations():
                 opacity=0.7
             ))
 
-    # Process noise
+    # Process noise (if still exists)
     noise_df = plot_df[plot_df['Cluster'] == -1]
     if not noise_df.empty:
         noise_mean = noise_df[feature_names].mean()
-        if noise_mean.max() != noise_mean.min():
-            noise_normalized = (noise_mean - noise_mean.min())/(noise_mean.max() - noise_mean.min())
-        else:
-            noise_normalized = noise_mean
+        noise_normalized = (noise_mean - noise_mean.min())/(noise_mean.max() - noise_mean.min())
+        if noise_mean.max() != noise_mean.min(): noise_mean=noise_normalized
         coadd_fig.add_trace(go.Scatter(
             x=feature_names,
             y=noise_normalized,
@@ -171,7 +162,8 @@ def create_visualizations():
         xaxis_title="Frequency Index",
         yaxis_title="Normalized Power",
         height=600,
-        width=1200
+        width=1200,
+        showlegend=True
     )
     return cluster_fig, coadd_fig
 
@@ -193,6 +185,60 @@ coadd_image = f"{base_name}_coadded_spectra.png"
 
 cluster_fig.write_image(cluster_image, engine="kaleido")
 coadd_fig.write_image(coadd_image, engine="kaleido")
+
+# --------------------------
+# Generate Example Time Series Plots per Cluster
+# --------------------------
+example_files = []
+color_map = {}
+if label_col:
+    unique_labels = df[label_col].unique()
+    color_palette = px.colors.qualitative.Dark24
+    color_map = {label: color_palette[i % len(color_palette)] for i, label in enumerate(unique_labels)}
+
+clusters_to_plot = result_df['Cluster'].unique()
+
+for cluster_id in clusters_to_plot:
+    cluster_data = result_df[result_df['Cluster'] == cluster_id]
+    if len(cluster_data) == 0:
+        continue
+
+    n_samples = min(5, len(cluster_data))
+    samples = cluster_data.sample(n=n_samples, random_state=42)
+
+    fig = go.Figure()
+    for _, row in samples.iterrows():
+        x = feature_names
+        y = row[feature_names].values.astype(float)
+
+        line_color = 'gray'  # Default for unlabeled data
+        if label_col and color_map:
+            label_value = row[label_col]
+            line_color = color_map.get(label_value, 'gray')
+
+        fig.add_trace(go.Scatter(
+            x=x,
+            y=y,
+            mode='lines',
+            line=dict(color=line_color),
+            name=f"{label_col}: {label_value}" if label_col else "Sample",
+            showlegend=label_col is not None
+        ))
+
+    cluster_title = f"Cluster {cluster_id}" if cluster_id != -1 else "Noise"
+    fig.update_layout(
+        title=f"{cluster_title} Examples",
+        xaxis_title="Feature",
+        yaxis_title="Value",
+        showlegend=label_col is not None,
+        legend_title=label_col if label_col else None,
+        height=600,
+        width=1200
+    )
+
+    example_filename = f"{base_name}_cluster_{cluster_id}_examples.png"
+    fig.write_image(example_filename, engine="kaleido")
+    example_files.append(example_filename)
 
 # --------------------------
 # Print Cluster Statistics
@@ -218,7 +264,7 @@ for cluster_id, count in cluster_counts.items():
             ]
             label_insights.append(f"{display_name} composition:\n" + "\n".join(insights))
 
-# Noise analysis
+# Noise analysis (if still exists)
 if -1 in cluster_counts:
     noise_count = cluster_counts[-1]
     if label_col:
@@ -238,6 +284,8 @@ print(f"\nResults saved to:")
 print(f"- Clustered data: {data_output}")
 print(f"- Cluster visualization: {cluster_image}")
 print(f"- Coadded spectra: {coadd_image}")
+for file in example_files:
+    print(f"- Example time series plot: {file}")
 print('\n'.join(count_report))
 
 if label_insights:
