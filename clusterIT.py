@@ -146,7 +146,8 @@ def create_visualizations():
     if not noise_df.empty:
         noise_mean = noise_df[feature_names].mean()
         noise_normalized = (noise_mean - noise_mean.min())/(noise_mean.max() - noise_mean.min())
-        if noise_mean.max() != noise_mean.min() else noise_mean
+        if noise_mean.max() != noise_mean.min(): noise_mean=noise_normalized
+        else: noise_mean
         coadd_fig.add_trace(go.Scatter(
             x=feature_names,
             y=noise_normalized,
