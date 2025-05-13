@@ -98,17 +98,21 @@ def create_visualizations():
         width=1200
     )
 
-    # Coadded spectra plot
+    # Coadded spectra plot with noise
     coadd_fig = go.Figure()
-    plot_df = result_df[result_df['Cluster'] >= 0]
+    plot_df = result_df.copy()
 
-    if not plot_df.empty:
-        cluster_means = plot_df.groupby('Cluster')[feature_names].mean()
+    # Separate clusters and noise
+    clusters_df = plot_df[plot_df['Cluster'] >= 0]
+    noise_df = plot_df[plot_df['Cluster'] == -1]
+
+    # Process clusters
+    if not clusters_df.empty:
+        cluster_means = clusters_df.groupby('Cluster')[feature_names].mean()
         cluster_means = cluster_means.apply(
             lambda x: (x - x.min()) / (x.max() - x.min()) if x.max() != x.min() else x,
             axis=1
         )
-
         for cluster_id in cluster_means.index:
             coadd_fig.add_trace(go.Scatter(
                 x=feature_names,
@@ -117,6 +121,19 @@ def create_visualizations():
                 name=f'Cluster {cluster_id}',
                 opacity=0.7
             ))
+
+    # Process noise
+    if not noise_df.empty:
+        noise_mean = noise_df[feature_names].mean()
+        noise_normalized = (noise_mean - noise_mean.min())/(noise_mean.max() - noise_mean.min()) if noise_mean.max() != noise_mean.min() else noise_mean
+        coadd_fig.add_trace(go.Scatter(
+            x=feature_names,
+            y=noise_normalized,
+            mode='lines',
+            name='Noise',
+            line=dict(dash='dot'),
+            opacity=0.7
+        ))
 
     coadd_fig.update_layout(
         title="Normalized Coadded Spectra by Cluster",
@@ -148,24 +165,55 @@ coadd_image = f"{base_name}_coadded_spectra.png"
 cluster_fig.write_image(cluster_image, engine="kaleido")
 coadd_fig.write_image(coadd_image, engine="kaleido")
 
+# cluster_analysis.py (updated section)
 # --------------------------
 # Print Cluster Statistics
 # --------------------------
-# Get cluster counts, including noise (-1)
 cluster_counts = result_df['Cluster'].value_counts().sort_index()
-
-# Format output message
 count_report = ["\nCluster membership:"]
-for cluster_id, count in cluster_counts.items():
-    if cluster_id == -1:
-        count_report.append(f"- Noise points: {count} rows")
-    else:
-        count_report.append(f"- Cluster {cluster_id}: {count} rows")
+label_insights = []
 
+for cluster_id, count in cluster_counts.items():
+    count_report.append(f"- Cluster {cluster_id}: {count} rows")
+
+    # Label distribution analysis
+    if label_col and cluster_id != -1:
+        cluster_data = result_df[result_df['Cluster'] == cluster_id]
+        label_counts = cluster_data[label_col].value_counts()
+        total = len(cluster_data)
+        top_labels = label_counts[label_counts > 0].sort_values(ascending=False)
+
+        if not top_labels.empty:
+            insights = [
+                f"   ⚡ {label}: {count} ({count/total:.1%})"
+                for label, count in top_labels.items()
+            ]
+            label_insights.append(f"Cluster {cluster_id} composition:\n" + "\n".join(insights))
+
+# Noise analysis
+if -1 in cluster_counts:
+    noise_count = cluster_counts[-1]
+    count_report.append(f"- Noise: {noise_count} rows")
+
+    if label_col:
+        noise_counts = result_df[result_df['Cluster'] == -1][label_col].value_counts()
+        total_noise = noise_counts.sum()
+        top_noise = noise_counts[noise_counts > 0].sort_values(ascending=False)
+
+        if not top_noise.empty:
+            insights = [
+                f"   🔊 {label}: {count} ({count/total_noise:.1%})"
+                for label, count in top_noise.items()
+            ]
+            label_insights.append("Noise composition:\n" + "\n".join(insights))
+
+# Print outputs
 print(f"\nResults saved to:")
 print(f"- Clustered data: {data_output}")
 print(f"- Cluster visualization: {cluster_image}")
 print(f"- Coadded spectra: {coadd_image}")
 print('\n'.join(count_report))
-print("\nNote: Requires kaleido package for PNG export")
 
+if label_insights:
+    print("\nLabel Distribution Insights:")
+    print('\n\n'.join(label_insights))
